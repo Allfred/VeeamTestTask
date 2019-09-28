@@ -1,18 +1,14 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace VeeamTask
 {
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             try
             {
-                string path = "File.djvu";
+                var path = "File.djvu";
                 var gzip = new Gzip(path);
                 // создание сжатого файла
                 gzip.Compress();
@@ -22,9 +18,11 @@ namespace VeeamTask
                 Console.WriteLine("0");
                 Console.ReadKey();
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                Console.WriteLine($"Error message: {e.Message}");
                 Console.WriteLine("1");
+                Console.ReadKey();
             }
         }
     }

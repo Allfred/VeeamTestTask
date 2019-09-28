@@ -6,12 +6,11 @@
         {
             Id = id;
             Bytes = bytes;
-           Count = count;
+            Count = count;
         }
 
         public int Id { get; }
         public byte[] Bytes { get; set; }
         public int Count { get; }
-
     }
 }
