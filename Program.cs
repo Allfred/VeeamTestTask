@@ -9,11 +9,12 @@ namespace VeeamTask
         {
             try
             {
-                var path = "File.djvu";
-                var gzip = new Gzip(path);
-                // создание сжатого файла
+                //var path = "File.djvu";
+                var path1 = @"C:\Users\Antibakter\Documents\Тест\File.pdf";
+                var gzip = new Gzip(path1);
+                
                 gzip.Compress();
-                // чтение из сжатого файла
+                
                 gzip.Decompress();
 
                 Console.WriteLine("0");
