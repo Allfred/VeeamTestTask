@@ -5,35 +5,71 @@ using System.IO.Compression;
 using System.Management;
 using System.Threading;
 
-namespace VeeamTask.Model
+namespace GZipTest.Model
 {
     public class Gzip
     {
         private static readonly AutoResetEvent EndReadingWaitHandler = new AutoResetEvent(false);
-        private static readonly AutoResetEvent NoMemoryReadingWaitHandler = new AutoResetEvent(false);
         private static readonly ManagementObjectSearcher RamMonitor = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize,FreePhysicalMemory FROM Win32_OperatingSystem");
         private readonly Queue<Block> _blocks;
-        private readonly string _compressedFile;
         private readonly string _sourceFile;
-        private readonly string _targetFile;
+        private readonly string _compressedFile;
+        private readonly string _deCompressedFile;
         private bool _finish;
-        public Gzip(string sourceFile)
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="sourceFile">name of source file</param>
+        /// <param name="deCompressedFile">name of deCompressed file</param>
+        public Gzip(string sourceFile,string deCompressedFile)
         {
-            _sourceFile = sourceFile; // source file
-            _compressedFile = sourceFile + ".gz"; // compressed file
-
-            _targetFile = sourceFile+ "New"; // decompressed file
+            var info = GetFullName(sourceFile);
+            _sourceFile = info.FullName; 
+            _compressedFile = Path.Combine(Environment.CurrentDirectory, _sourceFile + ".gz");
+            _deCompressedFile = Path.Combine(Environment.CurrentDirectory, deCompressedFile + info.Extension);
             _blocks = new Queue<Block>();
         }
         /// <summary>
-        /// Get 45% of free RAM  or if free RAM <1 bytes then exception
+        /// Get FileInfo of the file or if the file is not exist then exception
+        /// </summary>
+        /// <param name="sourceFile">name of file</param>
+        /// <returns>File info of the  file</returns>
+        private static FileInfo GetFullName(string sourceFile)
+        {
+            FileInfo info = new FileInfo(sourceFile);
+            
+            if (!info.Exists)
+            {
+
+                var dir = new DirectoryInfo(info.DirectoryName);
+
+                foreach (var item in dir.GetFiles())
+                {
+                    var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(item.FullName);
+                    if (info.Name == fileNameWithoutExtension)
+                    {
+                        info = new FileInfo(item.FullName);
+                        break;
+                    }
+                }
+               
+                if (!info.Exists)
+                {
+                  
+                    throw new Exception($"File \"{info.FullName}\" is not exist");
+                }
+            }
+
+            return info;
+        }
+        /// <summary>
+        /// Get 45% of free RAM  or if free RAM < 1 bytes then exception
         /// </summary>
         /// <returns>45% of free RAM</returns>
         private int GetSizeFreeMemory()
         {
             var freeRam = GetFreeRam45();
-            //freeRam = 0;
-
+          
             //TODO:хуйня полная надо улучшить
             if (freeRam < 1)
             {
@@ -43,7 +79,7 @@ namespace VeeamTask.Model
 
                 if (freeRam < 1)
                 {
-                    throw new Exception("Не хватает оперативной памяти для работы ");
+                    throw new Exception("Не хватает оперативной памяти для работы приложения ");
                 }
                   
             }
@@ -77,7 +113,9 @@ namespace VeeamTask.Model
         /// </summary>
         public void Compress()
         {
+            
             var id = 0;
+            _finish = false;
             using (var fs = new FileStream(_sourceFile, FileMode.Open))
             {
                 int sizeFreeMemory = GetSizeFreeMemory();
@@ -146,7 +184,7 @@ namespace VeeamTask.Model
         /// </summary>
         private void WritingOfDecompressedBlock()
         {
-            using (var targetStream = File.Create(_targetFile))
+            using (var newSourceStream = File.Create(_deCompressedFile))
             {
                 while (!_finish)
                 {
@@ -155,7 +193,7 @@ namespace VeeamTask.Model
                         while (_blocks != null && _blocks.Count > 0)
                         {
                             var block = _blocks.Dequeue();
-                            targetStream.Write(block.Bytes, 0, block.Count);
+                            newSourceStream.Write(block.Bytes, 0, block.Count);
 #if DEBUG
                             Console.WriteLine($"Block id:{block.Id} decompressed {block.Count / 1024} KB");
 #endif
@@ -202,10 +240,7 @@ namespace VeeamTask.Model
                     _finish = true;
                     EndReadingWaitHandler.WaitOne();
                     threadW.Abort();
-                    deCompressionStream.Close();
                 }
-
-                compressFs.Close();
             }
 #if DEBUG
             Console.WriteLine("Decompressed successfully");

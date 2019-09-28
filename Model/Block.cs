@@ -1,4 +1,4 @@
-﻿namespace VeeamTask.Model
+﻿namespace GZipTest.Model
 {
     public class Block
     {

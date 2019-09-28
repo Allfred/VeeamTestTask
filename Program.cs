@@ -1,7 +1,7 @@
 ﻿using System;
-using VeeamTask.Model;
+using GZipTest.Model;
 
-namespace VeeamTask
+namespace GZipTest
 {
     internal class Program
     {
@@ -9,12 +9,12 @@ namespace VeeamTask
         {
             try
             {
-                //var path = "File.djvu";
-                var path1 = @"C:\Users\Antibakter\Documents\Тест\File.pdf";
-                var gzip = new Gzip(path1);
-                
+                var source = args[0];
+                var deCompressed = args[1];
+                var gzip = new Gzip(source,deCompressed);
+
+                // var gzip = new Gzip("C\\File", "NewFile");
                 gzip.Compress();
-                
                 gzip.Decompress();
 
                 Console.WriteLine("0");
