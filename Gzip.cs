@@ -41,7 +41,7 @@ namespace VeeamTask
             freeRam = (ulong) (freeRam * 1024 * 0.45);
 
             if (freeRam > int.MaxValue) return int.MaxValue;
-            return 1024 * 1024;
+            //return 1024 * 1024; for testing 1Mb block
             return (int) freeRam;
         }
 
@@ -150,7 +150,7 @@ namespace VeeamTask
             EndReadingWaitHandler.Set();
         }
 
-        public void Decompress1()
+        public void Decompress()
         {
             _finish = false;
             // поток для чтения из сжатого файла
@@ -203,24 +203,6 @@ namespace VeeamTask
             {
                 Console.WriteLine($"Error message: {e.Message}");
                
-            }
-        }
-
-        public void Decompress()
-        {
-            // поток для чтения из сжатого файла
-            using (_compressFs = new FileStream(_compressedFile, FileMode.OpenOrCreate, FileAccess.Read))
-            {
-                // поток для записи восстановленного файла
-                using (var targetStream = File.Create(_targetFile))
-                {
-                    // поток разархивации
-                    using (var decompressionStream = new GZipStream(_compressFs, CompressionMode.Decompress))
-                    {
-                        decompressionStream.CopyTo(targetStream);
-                        Console.WriteLine("Восстановлен файл: {0}", _targetFile);
-                    }
-                }
             }
         }
     }

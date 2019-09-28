@@ -17,12 +17,12 @@ namespace VeeamTask
                 // создание сжатого файла
                 gzip.Compress();
                 // чтение из сжатого файла
-                gzip.Decompress1();
+                gzip.Decompress();
 
                 Console.WriteLine("0");
                 Console.ReadKey();
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 Console.WriteLine("1");
             }
