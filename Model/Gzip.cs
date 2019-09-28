@@ -11,13 +11,12 @@ namespace VeeamTask.Model
     {
         private static readonly AutoResetEvent EndReadingWaitHandler = new AutoResetEvent(false);
         private static readonly AutoResetEvent NoMemoryReadingWaitHandler = new AutoResetEvent(false);
+        private static readonly ManagementObjectSearcher RamMonitor = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize,FreePhysicalMemory FROM Win32_OperatingSystem");
         private readonly Queue<Block> _blocks;
         private readonly string _compressedFile;
         private readonly string _sourceFile;
         private readonly string _targetFile;
-        private FileStream _compressFs;
         private bool _finish;
-        private int _sizeFreeMemory;
         public Gzip(string sourceFile)
         {
             _sourceFile = sourceFile; // source file
@@ -39,16 +38,18 @@ namespace VeeamTask.Model
             if (freeRam < 1)
             {
                 GC.Collect();
+
                 freeRam = GetFreeRam45();
 
-                //freeRam = 0;
-
                 if (freeRam < 1)
+                {
                     throw new Exception("Не хватает оперативной памяти для работы ");
-                //NoMemoryReadingWaitHandler.WaitOne();
+                }
+                  
             }
-
-            return 1024 * 1024*100; //for testing 100Mb block
+#if DEBUG
+            //return 1024 * 1024*100; //for testing 100Mb block
+#endif
             return freeRam;
         }
         /// <summary>
@@ -58,16 +59,16 @@ namespace VeeamTask.Model
         private static int GetFreeRam45()
         {
             ulong freeRam = 0;
-            var ramMonitor = //запрос к WMI для получения памяти ПК
-                new ManagementObjectSearcher(
-                    "SELECT TotalVisibleMemorySize,FreePhysicalMemory FROM Win32_OperatingSystem");
-
-            foreach (ManagementObject objram in ramMonitor.Get())
-                freeRam = Convert.ToUInt64(objram["FreePhysicalMemory"]); //свободная KB
-
+            foreach (var objRam in RamMonitor.Get())
+            {
+                freeRam = Convert.ToUInt64(objRam["FreePhysicalMemory"]); //свободная RAM KB
+            }
             freeRam = (ulong) (freeRam * 1024 * 0.45); //переводим в байты и берем 45% свободной оперативной памяти
 
-            if (freeRam > int.MaxValue) return int.MaxValue;
+            if (freeRam > int.MaxValue)
+            {
+                return int.MaxValue;
+            }
 
             return (int) freeRam;
         }
@@ -77,20 +78,12 @@ namespace VeeamTask.Model
         public void Compress()
         {
             var id = 0;
-
-            //var sizeFile = new FileInfo(_sourceFile).Length;
-            //const int mbyte = 1024 * 1024;
-            //var countBlock = (int)sizeFile / mbyte;
-            //if (countBlock % sizeFile != 0) countBlock++;
-            //var threads = new Thread[Environment.ProcessorCount];
-            // var  threadR = new Thread(WritingOfDecompressedBlock);
-
             using (var fs = new FileStream(_sourceFile, FileMode.Open))
             {
-                _sizeFreeMemory = GetSizeFreeMemory();
-                var bytes = new byte[_sizeFreeMemory];
+                int sizeFreeMemory = GetSizeFreeMemory();
+                var bytes = new byte[sizeFreeMemory];
                 var threadW = new Thread(WritingOfBlockCompress);
-                var countReadingByte = fs.Read(bytes, 0, _sizeFreeMemory);
+                var countReadingByte = fs.Read(bytes, 0, sizeFreeMemory);
 
                 while (countReadingByte > 0)
                 {
@@ -103,18 +96,17 @@ namespace VeeamTask.Model
                     }
 
                     if (threadW.IsAlive == false) threadW.Start();
-                    _sizeFreeMemory = GetSizeFreeMemory();
+                    sizeFreeMemory = GetSizeFreeMemory();
 
 
-                    bytes = new byte[_sizeFreeMemory];
-                    countReadingByte = fs.Read(bytes, 0, _sizeFreeMemory);
+                    bytes = new byte[sizeFreeMemory];
+                    countReadingByte = fs.Read(bytes, 0, sizeFreeMemory);
 
                 }
 
                 _finish = true;
                 EndReadingWaitHandler.WaitOne();
                 threadW.Abort();
-                fs.Close();
             }
 #if DEBUG
             Console.WriteLine("Сompressed successfully");
@@ -125,21 +117,25 @@ namespace VeeamTask.Model
         /// </summary>
         private void WritingOfBlockCompress()
         {
-            using (_compressFs = File.Create(_compressedFile))
+            using (var compressFs = File.Create(_compressedFile))
             {
                 using (var compressionStream =
-                    new GZipStream(_compressFs, CompressionMode.Compress))
+                    new GZipStream(compressFs, CompressionMode.Compress))
                 {
                     while (!_finish)
-                    while (_blocks != null && _blocks.Count > 0)
+                    {
                         lock (_blocks)
                         {
-                            var block = _blocks.Dequeue();
-                            compressionStream.Write(block.Bytes, 0, block.Count);
+                            while (_blocks != null && _blocks.Count > 0)
+                            {
+                                    var block = _blocks.Dequeue();
+                                    compressionStream.Write(block.Bytes, 0, block.Count);
 #if DEBUG
-                                Console.WriteLine($"Block id:{block.Id} compressed {block.Count / 1024} KB");
+                                    Console.WriteLine($"Block id:{block.Id} compressed {block.Count / 1024} KB");
 #endif
                             }
+                        }
+                    }
                 }
             }
 
@@ -153,15 +149,20 @@ namespace VeeamTask.Model
             using (var targetStream = File.Create(_targetFile))
             {
                 while (!_finish)
-                while (_blocks != null && _blocks.Count > 0)
+                {
                     lock (_blocks)
                     {
-                        var block = _blocks.Dequeue();
-                        targetStream.Write(block.Bytes, 0, block.Count);
+                        while (_blocks != null && _blocks.Count > 0)
+                        {
+                            var block = _blocks.Dequeue();
+                            targetStream.Write(block.Bytes, 0, block.Count);
 #if DEBUG
-                            Console.WriteLine($"Block id:{block.Id} decompressed {block.Count/1024} KB");
+                            Console.WriteLine($"Block id:{block.Id} decompressed {block.Count / 1024} KB");
 #endif
                         }
+
+                    }
+                }
             }
 
             EndReadingWaitHandler.Set();
@@ -172,15 +173,15 @@ namespace VeeamTask.Model
         public void Decompress()
         {
             _finish = false;
-            using (_compressFs = new FileStream(_compressedFile, FileMode.OpenOrCreate, FileAccess.Read))
+            using (var compressFs = new FileStream(_compressedFile, FileMode.OpenOrCreate, FileAccess.Read))
             {
-                using (var deCompressionStream = new GZipStream(_compressFs, CompressionMode.Decompress))
+                using (var deCompressionStream = new GZipStream(compressFs, CompressionMode.Decompress))
                 {
                     var id = 0;
                     var threadW = new Thread(WritingOfDecompressedBlock);
-                    _sizeFreeMemory = GetSizeFreeMemory();
-                    var bytes = new byte[_sizeFreeMemory];
-                    var countReadingByte = deCompressionStream.Read(bytes, 0, _sizeFreeMemory);
+                    var sizeFreeMemory = GetSizeFreeMemory();
+                    var bytes = new byte[sizeFreeMemory];
+                    var countReadingByte = deCompressionStream.Read(bytes, 0, sizeFreeMemory);
                     while (countReadingByte > 0)
                     {
 #if DEBUG
@@ -192,9 +193,9 @@ namespace VeeamTask.Model
                         }
 
                         if (threadW.IsAlive == false) threadW.Start();
-                        _sizeFreeMemory = GetSizeFreeMemory();
-                        bytes = new byte[_sizeFreeMemory];
-                        countReadingByte = deCompressionStream.Read(bytes, 0, _sizeFreeMemory);
+                        sizeFreeMemory = GetSizeFreeMemory();
+                        bytes = new byte[sizeFreeMemory];
+                        countReadingByte = deCompressionStream.Read(bytes, 0, sizeFreeMemory);
 
                     }
 
@@ -204,7 +205,7 @@ namespace VeeamTask.Model
                     deCompressionStream.Close();
                 }
 
-                _compressFs.Close();
+                compressFs.Close();
             }
 #if DEBUG
             Console.WriteLine("Decompressed successfully");
