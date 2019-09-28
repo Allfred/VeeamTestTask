@@ -21,18 +21,21 @@ namespace VeeamTask
 
         public Gzip(string sourceFile)
         {
-            _sourceFile = sourceFile; // исходный файл
-            _compressedFile = sourceFile + ".gz"; // сжатый файл
-            _targetFile = "New" + sourceFile; // восстановленный файл
+            _sourceFile = sourceFile; // source file
+            _compressedFile = sourceFile + ".gz"; // compressed file
+            _targetFile = "New" + sourceFile; // decompressed file
             _blocks = new Queue<Block>();
-            _sizeFreeMemory = 10;
         }
+        /// <summary>
+        /// Get 45% of free RAM  or if free RAM < 1 byte then exception
+        /// </summary>
+        /// <returns>45% of free RAM</returns>
         private int GetSizeFreeMemory()
         {
             var freeRam = GetFreeRam45();
             //freeRam = 0;
 
-            //хуйня полная надо улучшить
+            //TODO:хуйня полная надо улучшить
             if (freeRam < 1)
             {
                 GC.Collect();
@@ -48,7 +51,10 @@ namespace VeeamTask
             //return 1024 * 1024; for testing 1Mb block
             return freeRam;
         }
-
+        /// <summary>
+        ///  Get 45% of free RAM
+        /// </summary>
+        /// <returns>45% of free RAM</returns>
         private static int GetFreeRam45()
         {
             ulong freeRam = 0;
@@ -65,7 +71,9 @@ namespace VeeamTask
 
             return (int) freeRam;
         }
-
+        /// <summary>
+        /// Function of compressing
+        /// </summary>
         public void Compress()
         {
             var id = 0;
@@ -75,7 +83,7 @@ namespace VeeamTask
             //var countBlock = (int)sizeFile / mbyte;
             //if (countBlock % sizeFile != 0) countBlock++;
             //var threads = new Thread[Environment.ProcessorCount];
-            // var  threadR = new Thread(WritingOfBlockDecompress);
+            // var  threadR = new Thread(WritingOfDecompressedBlock);
 
             using (var fs = new FileStream(_sourceFile, FileMode.Open))
             {
@@ -106,12 +114,13 @@ namespace VeeamTask
 
             Console.WriteLine("Сompressed successfully");
         }
-
+        /// <summary>
+        /// Function for compressing of blocks and writing their in file
+        /// </summary>
         private void WritingOfBlockCompress()
         {
             using (_compressFs = File.Create(_compressedFile))
             {
-                // поток архивации
                 using (var compressionStream =
                     new GZipStream(_compressFs, CompressionMode.Compress))
                 {
@@ -128,14 +137,13 @@ namespace VeeamTask
 
             EndReadingWaitHandler.Set();
         }
-
-        private void WritingOfBlockDecompress()
+        /// <summary>
+        /// Function for writing the decompressed bloks in file
+        /// </summary>
+        private void WritingOfDecompressedBlock()
         {
-            // поток для записи восстановленного файла
             using (var targetStream = File.Create(_targetFile))
             {
-                // поток разархивации
-
                 while (!_finish)
                 while (_blocks != null && _blocks.Count > 0)
                     lock (_blocks)
@@ -148,18 +156,18 @@ namespace VeeamTask
 
             EndReadingWaitHandler.Set();
         }
-
+        /// <summary>
+        /// Function of Decompressing 
+        /// </summary>
         public void Decompress()
         {
             _finish = false;
-            // поток для чтения из сжатого файла
-
             using (_compressFs = new FileStream(_compressedFile, FileMode.OpenOrCreate, FileAccess.Read))
             {
                 using (var deCompressionStream = new GZipStream(_compressFs, CompressionMode.Decompress))
                 {
                     var id = 0;
-                    var threadW = new Thread(WritingOfBlockDecompress);
+                    var threadW = new Thread(WritingOfDecompressedBlock);
                     _sizeFreeMemory = GetSizeFreeMemory();
                     var bytes = new byte[_sizeFreeMemory];
 
