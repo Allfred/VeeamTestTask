@@ -1,4 +1,5 @@
 ﻿using System;
+using VeeamTask.Model;
 
 namespace VeeamTask
 {

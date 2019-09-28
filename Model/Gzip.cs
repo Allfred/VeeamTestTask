@@ -5,7 +5,7 @@ using System.IO.Compression;
 using System.Management;
 using System.Threading;
 
-namespace VeeamTask
+namespace VeeamTask.Model
 {
     public class Gzip
     {

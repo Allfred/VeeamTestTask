@@ -1,4 +1,4 @@
-﻿namespace VeeamTask
+﻿namespace VeeamTask.Model
 {
     public class Block
     {
