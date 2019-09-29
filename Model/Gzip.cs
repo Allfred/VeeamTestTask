@@ -10,6 +10,7 @@ namespace GZipTest.Model
     public class Gzip
     {
         private static readonly AutoResetEvent EndReadingWaitHandler = new AutoResetEvent(false);
+        private static readonly AutoResetEvent CleanMemoryWaitHandler = new AutoResetEvent(false);
         private static readonly ManagementObjectSearcher RamMonitor = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize,FreePhysicalMemory FROM Win32_OperatingSystem");
         private readonly Queue<Block> _blocks;
         private readonly string _sourceFile;
@@ -23,10 +24,10 @@ namespace GZipTest.Model
         /// <param name="deCompressedFile">name of deCompressed file</param>
         public Gzip(string sourceFile,string deCompressedFile)
         {
-            var info = GetFullName(sourceFile);
+            var info = GetFileInfo(sourceFile);
             _sourceFile = info.FullName; 
-            _compressedFile = Path.Combine(Environment.CurrentDirectory, _sourceFile + ".gz");
-            _deCompressedFile = Path.Combine(Environment.CurrentDirectory, deCompressedFile + info.Extension);
+            _compressedFile = _sourceFile + ".gz";
+            _deCompressedFile = Path.Combine(info.DirectoryName, deCompressedFile + info.Extension);
             _blocks = new Queue<Block>();
         }
         /// <summary>
@@ -34,7 +35,7 @@ namespace GZipTest.Model
         /// </summary>
         /// <param name="sourceFile">name of file</param>
         /// <returns>File info of the  file</returns>
-        private static FileInfo GetFullName(string sourceFile)
+        private static FileInfo GetFileInfo(string sourceFile)
         {
             FileInfo info = new FileInfo(sourceFile);
             
@@ -55,8 +56,7 @@ namespace GZipTest.Model
                
                 if (!info.Exists)
                 {
-                  
-                    throw new Exception($"File \"{info.FullName}\" is not exist");
+                  throw new Exception($"File \"{info.FullName}\" is not exist");
                 }
             }
 
@@ -69,19 +69,24 @@ namespace GZipTest.Model
         private int GetSizeFreeMemory()
         {
             var freeRam = GetFreeRam45();
-          
-            //TODO:хуйня полная надо улучшить
+
             if (freeRam < 1)
             {
                 GC.Collect();
-
                 freeRam = GetFreeRam45();
-
                 if (freeRam < 1)
                 {
-                    throw new Exception("Не хватает оперативной памяти для работы приложения ");
+                    CleanMemoryWaitHandler.WaitOne();
+
+                    GC.Collect();
+                    freeRam = GetFreeRam45();
+
+                    if (freeRam < 1)
+                    {
+                        throw new Exception("Не хватает оперативной памяти для работы приложения ");
+                    }
                 }
-                  
+
             }
 #if DEBUG
             //return 1024 * 1024*100; //for testing 100Mb block
@@ -113,14 +118,13 @@ namespace GZipTest.Model
         /// </summary>
         public void Compress()
         {
-            
-            var id = 0;
-            _finish = false;
             using (var fs = new FileStream(_sourceFile, FileMode.Open))
             {
+                var id = 0;
+                _finish = false;
+                var threadW = new Thread(WritingOfBlockCompress);
                 int sizeFreeMemory = GetSizeFreeMemory();
                 var bytes = new byte[sizeFreeMemory];
-                var threadW = new Thread(WritingOfBlockCompress);
                 var countReadingByte = fs.Read(bytes, 0, sizeFreeMemory);
 
                 while (countReadingByte > 0)
@@ -173,6 +177,7 @@ namespace GZipTest.Model
 #endif
                             }
                         }
+                        CleanMemoryWaitHandler.Set();
                     }
                 }
             }
@@ -200,6 +205,8 @@ namespace GZipTest.Model
                         }
 
                     }
+
+                    CleanMemoryWaitHandler.Set();
                 }
             }
 
@@ -210,12 +217,13 @@ namespace GZipTest.Model
         /// </summary>
         public void Decompress()
         {
-            _finish = false;
+           
             using (var compressFs = new FileStream(_compressedFile, FileMode.OpenOrCreate, FileAccess.Read))
             {
                 using (var deCompressionStream = new GZipStream(compressFs, CompressionMode.Decompress))
                 {
                     var id = 0;
+                    _finish = false;
                     var threadW = new Thread(WritingOfDecompressedBlock);
                     var sizeFreeMemory = GetSizeFreeMemory();
                     var bytes = new byte[sizeFreeMemory];
