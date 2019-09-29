@@ -9,8 +9,8 @@ namespace GZipTest
         private static void Main(string[] args)
         {
 
-            //args = new[] {"compress", "File.djvu", "NewFile1"};
-            args = new[] {"decompress", "NewFile1.gz", "NewFile.djvu" };
+            args = new[] {"compress", "File.djvu", "NewFile1"};
+            //args = new[] {"decompress", "NewFile1.gz", "NewFile.djvu" };
             try
             {
                 bool isCompress = true;

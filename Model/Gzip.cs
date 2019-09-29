@@ -17,9 +17,8 @@ namespace GZipTest.Model
         private  string _sourceFile;
         private  string _compressedFile;
         private  string _deCompressedFile;
-
         private bool _finish;
-
+        
         /// <summary>
         /// Constructor
         /// </summary>
@@ -29,12 +28,6 @@ namespace GZipTest.Model
             _compressedFile = "";
             _deCompressedFile = "";
             _blocks = new Queue<Block>();
-
-            //var info = FileIsExist(sourceFile);
-            //_sourceFile = info.FullName; 
-            //_compressedFile = _compressedFile = $"{_sourceFile}.gz";
-            //_deCompressedFile = Path.Combine(info.DirectoryName, deCompressedFile + info.Extension);
-
         }
         /// <summary>
         /// if the file is not exist return exception
@@ -77,7 +70,7 @@ namespace GZipTest.Model
 
             }
 #if DEBUG
-            return 1024 * 1024*1; //for testing 1Mb block
+           // return 1024 * 1024*1; //for testing 1Mb block
 #endif
             return freeRam;
         }
@@ -104,9 +97,11 @@ namespace GZipTest.Model
         /// <summary>
         /// Function of compressing
         /// </summary>
+        /// <param name="sourceFile">source file</param>
+        /// <param name="compressedFile">compressed file </param>
         public void Compress(string sourceFile, string compressedFile)
         {
-            //FileIsExist(sourceFile);
+            FileIsExist(sourceFile);
             _sourceFile = sourceFile;
             _compressedFile = $"{compressedFile}.gz";
 
@@ -147,7 +142,12 @@ namespace GZipTest.Model
             Console.WriteLine("Сompressed successfully");
 #endif
         }
-
+        /// <summary>
+        /// Reading from stream to bytes array of datas
+        /// </summary>
+        /// <param name="bytes">bytes array for reading</param>
+        /// <param name="fs">stream</param>
+        /// <returns> count read bytes </returns>
         private static long ReadingStreamInByte(LargeByteArray bytes, FileStream fs)
         {
             long countReadingByte = 0;
@@ -161,7 +161,6 @@ namespace GZipTest.Model
 
             return countReadingByte;
         }
-
         /// <summary>
         /// Function for compressing of blocks and writing their in file
         /// </summary>
@@ -172,30 +171,29 @@ namespace GZipTest.Model
                 using (var compressionStream =
                     new GZipStream(compressFs, CompressionMode.Compress))
                 {
-                    while (!_finish)
+                    while (!_finish || _blocks.Count > 0)
                     {
                         lock (_blocks)
                         {
-                            while (_blocks != null && _blocks.Count > 0)
+                            
+                            var block = _blocks.Dequeue();
+                            compressionStream.Write( BitConverter.GetBytes(block.Id), 0, 4);
+                            compressionStream.Write( BitConverter.GetBytes(block.Count), 0, 8);
+
+                            for (int i = 0; i < block.Bytes.CountOfArray; i++)
                             {
-                                    var block = _blocks.Dequeue();
-                                    compressionStream.Write( BitConverter.GetBytes(block.Id), 0, 4);
-                                    compressionStream.Write( BitConverter.GetBytes(block.Count), 0, 8);
-                                    for (int i = 0; i < block.Bytes.CountOfArray; i++)
-                                    {
                                         compressionStream.Write(block.Bytes[i], 0, block.Bytes.CountOfByte[i]);
-                                    }
+                            }
                                     
 #if DEBUG
                                     Console.WriteLine($"Block id:{block.Id} compressed {block.Count / 1024} KB");
 #endif
-                            }
+                            
                         }
                         CleanMemoryWaitHandler.Set();
                     }
                 }
             }
-
             EndReadingWaitHandler.Set();
         }
         /// <summary>
@@ -205,24 +203,20 @@ namespace GZipTest.Model
         {
             using (var newSourceStream = File.Create(_deCompressedFile))
             {
-                while (!_finish)
+                while ( !_finish || _blocks.Count > 0)
                 {
                     lock (_blocks)
                     {
-                        while (_blocks != null && _blocks.Count > 0)
-                        {
-                            var block = _blocks.Dequeue();
+                        var block = _blocks.Dequeue();
 
-                            for (int i = 0; i < block.Bytes.CountOfArray; i++)
-                            {
+                        for (int i = 0; i < block.Bytes.CountOfArray; i++)
+                        {
                                 newSourceStream.Write(block.Bytes[i], 0, block.Bytes.CountOfByte[i]);
-                            }
+                        }
                            
 #if DEBUG
                             Console.WriteLine($"Block id:{block.Id} decompressed {block.Count / 1024} KB");
 #endif
-                        }
-
                     }
 
                     CleanMemoryWaitHandler.Set();
@@ -234,6 +228,8 @@ namespace GZipTest.Model
         /// <summary>
         /// Function of Decompressing 
         /// </summary>
+        /// <param name="compressedFile">compressed file</param>
+        /// <param name="deCompressedFile">decompressed file</param>
         public void Decompress(string compressedFile, string deCompressedFile)
         {
             FileIsExist(compressedFile);
@@ -243,16 +239,13 @@ namespace GZipTest.Model
             {
                 using (var deCompressionStream = new GZipStream(compressFs, CompressionMode.Decompress))
                 {
-                  
-
                     _finish = false;
                     _threadWDec = new Thread(WritingOfDecompressedBlock);
-                    var sizeFreeMemory = GetSizeFreeMemory();
-
                     var (id, blockSize) = GetIdAndSizeOfBlock(deCompressionStream);
+
                     while (blockSize > 0)
                     {
-
+                        var sizeFreeMemory = GetSizeFreeMemory();
                         if (blockSize > sizeFreeMemory)
                         {
                             DecompressFileInBlocksOnMaxRamMemory(id, blockSize, sizeFreeMemory, deCompressionStream);
@@ -263,14 +256,18 @@ namespace GZipTest.Model
                             ReadingDecompressedStreamInByte(bytes, deCompressionStream);
                             lock (_blocks)
                             {
-                                _blocks.Enqueue(new Block(id++, bytes, blockSize));
+                                _blocks.Enqueue(new Block(id, bytes, blockSize));
                             }
+
+#if DEBUG
+                            Console.WriteLine($"Read the block id:{id} size:{blockSize / 1024} KB");
+#endif
+
                             if (_threadWDec.IsAlive == false) _threadWDec.Start();
                         }
-                        sizeFreeMemory = GetSizeFreeMemory();
-
 
                         (id, blockSize) = GetIdAndSizeOfBlock(deCompressionStream);
+                       
                     }
 
                     _finish = true;
@@ -282,32 +279,42 @@ namespace GZipTest.Model
             Console.WriteLine("Decompressed successfully");
 #endif
         }
-
-        private static (int id, long sizeBlock) GetIdAndSizeOfBlock(GZipStream deCompressionStream)
+        /// <summary>
+        /// Get id and size of the block from the stream
+        /// </summary>
+        /// <param name="deCompressionStream"></param>
+        /// <returns>(id, block size)</returns>
+        private static (int id, long blockSize) GetIdAndSizeOfBlock(GZipStream deCompressionStream)
         {
-            int id;
+           
             byte[] byteId = new byte[4];
             deCompressionStream.Read(byteId, 0, byteId.Length);
-            id = BitConverter.ToInt32(byteId, 0);
+            var id = BitConverter.ToInt32(byteId, 0);
 
             byte[] byteCountReading = new byte[8];
             deCompressionStream.Read(byteCountReading, 0, byteCountReading.Length);
             var countOfBytesInBlock = BitConverter.ToInt32(byteCountReading, 0);
             return (id, countOfBytesInBlock);
         }
-
-        private  void DecompressFileInBlocksOnMaxRamMemory(int id,long countOfBytesInBlock, long sizeFreeMemory, GZipStream deCompressionStream)
+        /// <summary>
+        /// Decopmpress of the block if PC has RAM less than block size
+        /// </summary>
+        /// <param name="id">block id</param>
+        /// <param name="blockSize"> block size in bytes</param>
+        /// <param name="sizeFreeMemory"> size of free RAM</param>
+        /// <param name="deCompressionStream">stream</param>
+        private  void DecompressFileInBlocksOnMaxRamMemory(int id,long blockSize, long sizeFreeMemory, GZipStream deCompressionStream)
         {
-            while (countOfBytesInBlock > 0)
+            while (blockSize > 0)
             {
-                if (countOfBytesInBlock > sizeFreeMemory)
+                if (blockSize > sizeFreeMemory)
                 {
-                    countOfBytesInBlock = countOfBytesInBlock - sizeFreeMemory;
+                    blockSize = blockSize - sizeFreeMemory;
                 }
                 else
                 {
-                    sizeFreeMemory = countOfBytesInBlock;
-                    countOfBytesInBlock = 0;
+                    sizeFreeMemory = blockSize;
+                    blockSize = 0;
                 }
 
                 var bytes = new LargeByteArray(sizeFreeMemory);
@@ -326,7 +333,11 @@ namespace GZipTest.Model
                 sizeFreeMemory = GetSizeFreeMemory();
             }
         }
-
+        /// <summary>
+        /// Reading from stream to bytes array of datas
+        /// </summary>
+        /// <param name="bytes">big bytes array</param>
+        /// <param name="deCompressionStream">stream</param>
         private void ReadingDecompressedStreamInByte(LargeByteArray bytes,GZipStream deCompressionStream)
         {
          
