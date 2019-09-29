@@ -12,16 +12,17 @@ namespace GZipTest.Model
         private static readonly AutoResetEvent EndReadingWaitHandler = new AutoResetEvent(false);
         private static readonly AutoResetEvent CleanMemoryWaitHandler = new AutoResetEvent(false);
         private static readonly ManagementObjectSearcher RamMonitor = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize,FreePhysicalMemory FROM Win32_OperatingSystem");
+        private Thread _threadWDec;
         private  readonly Queue<Block> _blocks;
         private  string _sourceFile;
         private  string _compressedFile;
         private  string _deCompressedFile;
+
         private bool _finish;
+
         /// <summary>
         /// Constructor
         /// </summary>
-        /// <param name="sourceFile">name of source file</param>
-        /// <param name="deCompressedFile">name of deCompressed file</param>
         public Gzip()
         {
             _sourceFile = "";
@@ -76,7 +77,7 @@ namespace GZipTest.Model
 
             }
 #if DEBUG
-            //return 1024 * 1024*100; //for testing 100Mb block
+            return 1024 * 1024*1; //for testing 1Mb block
 #endif
             return freeRam;
         }
@@ -105,7 +106,7 @@ namespace GZipTest.Model
         /// </summary>
         public void Compress(string sourceFile, string compressedFile)
         {
-            FileIsExist(sourceFile);
+            //FileIsExist(sourceFile);
             _sourceFile = sourceFile;
             _compressedFile = $"{compressedFile}.gz";
 
@@ -178,7 +179,8 @@ namespace GZipTest.Model
                             while (_blocks != null && _blocks.Count > 0)
                             {
                                     var block = _blocks.Dequeue();
-
+                                    compressionStream.Write( BitConverter.GetBytes(block.Id), 0, 4);
+                                    compressionStream.Write( BitConverter.GetBytes(block.Count), 0, 8);
                                     for (int i = 0; i < block.Bytes.CountOfArray; i++)
                                     {
                                         compressionStream.Write(block.Bytes[i], 0, block.Bytes.CountOfByte[i]);
@@ -241,33 +243,39 @@ namespace GZipTest.Model
             {
                 using (var deCompressionStream = new GZipStream(compressFs, CompressionMode.Decompress))
                 {
-                    var id = 0;
+                  
+
                     _finish = false;
-                    var threadW = new Thread(WritingOfDecompressedBlock);
+                    _threadWDec = new Thread(WritingOfDecompressedBlock);
                     var sizeFreeMemory = GetSizeFreeMemory();
-                    var bytes = new LargeByteArray(sizeFreeMemory);
-                    long countReadingByte = ReadingDecompressedStreamInByte(bytes, deCompressionStream);
 
-                    while (countReadingByte > 0)
+                    var (id, blockSize) = GetIdAndSizeOfBlock(deCompressionStream);
+                    while (blockSize > 0)
                     {
-#if DEBUG
-                        Console.WriteLine($"Read the block id:{id} size:{countReadingByte / 1024} KB");
-#endif
-                        lock (_blocks)
+
+                        if (blockSize > sizeFreeMemory)
                         {
-                            _blocks.Enqueue(new Block(id++, bytes, countReadingByte));
+                            DecompressFileInBlocksOnMaxRamMemory(id, blockSize, sizeFreeMemory, deCompressionStream);
                         }
-
-                        if (threadW.IsAlive == false) threadW.Start();
+                        else
+                        {
+                            var bytes=new LargeByteArray(blockSize);
+                            ReadingDecompressedStreamInByte(bytes, deCompressionStream);
+                            lock (_blocks)
+                            {
+                                _blocks.Enqueue(new Block(id++, bytes, blockSize));
+                            }
+                            if (_threadWDec.IsAlive == false) _threadWDec.Start();
+                        }
                         sizeFreeMemory = GetSizeFreeMemory();
-                        bytes = new LargeByteArray(sizeFreeMemory);
-                        countReadingByte = ReadingDecompressedStreamInByte(bytes, deCompressionStream);
 
+
+                        (id, blockSize) = GetIdAndSizeOfBlock(deCompressionStream);
                     }
 
                     _finish = true;
                     EndReadingWaitHandler.WaitOne();
-                    threadW.Abort();
+                    _threadWDec.Abort();
                 }
             }
 #if DEBUG
@@ -275,17 +283,59 @@ namespace GZipTest.Model
 #endif
         }
 
-        private static long ReadingDecompressedStreamInByte(LargeByteArray bytes,GZipStream deCompressionStream)
+        private static (int id, long sizeBlock) GetIdAndSizeOfBlock(GZipStream deCompressionStream)
         {
-            long countReadingByte = 0;
+            int id;
+            byte[] byteId = new byte[4];
+            deCompressionStream.Read(byteId, 0, byteId.Length);
+            id = BitConverter.ToInt32(byteId, 0);
+
+            byte[] byteCountReading = new byte[8];
+            deCompressionStream.Read(byteCountReading, 0, byteCountReading.Length);
+            var countOfBytesInBlock = BitConverter.ToInt32(byteCountReading, 0);
+            return (id, countOfBytesInBlock);
+        }
+
+        private  void DecompressFileInBlocksOnMaxRamMemory(int id,long countOfBytesInBlock, long sizeFreeMemory, GZipStream deCompressionStream)
+        {
+            while (countOfBytesInBlock > 0)
+            {
+                if (countOfBytesInBlock > sizeFreeMemory)
+                {
+                    countOfBytesInBlock = countOfBytesInBlock - sizeFreeMemory;
+                }
+                else
+                {
+                    sizeFreeMemory = countOfBytesInBlock;
+                    countOfBytesInBlock = 0;
+                }
+
+                var bytes = new LargeByteArray(sizeFreeMemory);
+                ReadingDecompressedStreamInByte(bytes, deCompressionStream);
+#if DEBUG
+                Console.WriteLine($"Read the block id:{id} size:{sizeFreeMemory / 1024} KB");
+#endif
+
+                lock (_blocks)
+                {
+                    _blocks.Enqueue(new Block(id, bytes, sizeFreeMemory));
+                }
+
+                if (_threadWDec.IsAlive == false) _threadWDec.Start();
+
+                sizeFreeMemory = GetSizeFreeMemory();
+            }
+        }
+
+        private void ReadingDecompressedStreamInByte(LargeByteArray bytes,GZipStream deCompressionStream)
+        {
+         
             for (int i = 0; i < bytes.CountOfArray; i++)
             {
                 int count= deCompressionStream.Read(bytes[i], 0, bytes[i].Length);
                 bytes.CountOfByte[i] = count;
-                countReadingByte += count;
+               
             }
-
-            return countReadingByte;
         }
     }
 }
