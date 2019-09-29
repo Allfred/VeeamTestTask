@@ -1,5 +1,4 @@
 ﻿using System;
-using System.IO;
 using GZipTest.Model;
 
 namespace GZipTest
@@ -9,8 +8,6 @@ namespace GZipTest
         private static void Main(string[] args)
         {
 
-            args = new[] {"compress", "File.djvu", "NewFile1"};
-            //args = new[] {"decompress", "NewFile1.gz", "NewFile.djvu" };
             try
             {
                 bool isCompress = true;

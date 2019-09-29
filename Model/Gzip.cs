@@ -70,7 +70,7 @@ namespace GZipTest.Model
 
             }
 #if DEBUG
-           // return 1024 * 1024*1; //for testing 1Mb block
+            //return 1024 * 1024*1; //for testing 1Mb block
 #endif
             return freeRam;
         }
@@ -175,21 +175,24 @@ namespace GZipTest.Model
                     {
                         lock (_blocks)
                         {
-                            
-                            var block = _blocks.Dequeue();
-                            compressionStream.Write( BitConverter.GetBytes(block.Id), 0, 4);
-                            compressionStream.Write( BitConverter.GetBytes(block.Count), 0, 8);
-
-                            for (int i = 0; i < block.Bytes.CountOfArray; i++)
+                            if (_blocks.Count > 0)
                             {
-                                        compressionStream.Write(block.Bytes[i], 0, block.Bytes.CountOfByte[i]);
-                            }
-                                    
+                                var block = _blocks.Dequeue();
+                                compressionStream.Write(BitConverter.GetBytes(block.Id), 0, 4);
+                                compressionStream.Write(BitConverter.GetBytes(block.Count), 0, 8);
+
+                                for (int i = 0; i < block.Bytes.CountOfArray; i++)
+                                {
+                                    compressionStream.Write(block.Bytes[i], 0, block.Bytes.CountOfByte[i]);
+                                }
+
 #if DEBUG
-                                    Console.WriteLine($"Block id:{block.Id} compressed {block.Count / 1024} KB");
+                                Console.WriteLine($"Block id:{block.Id} compressed {block.Count / 1024} KB");
 #endif
-                            
+
+                            }
                         }
+
                         CleanMemoryWaitHandler.Set();
                     }
                 }
@@ -203,20 +206,25 @@ namespace GZipTest.Model
         {
             using (var newSourceStream = File.Create(_deCompressedFile))
             {
-                while ( !_finish || _blocks.Count > 0)
+                while (!_finish || _blocks.Count > 0)
                 {
                     lock (_blocks)
                     {
-                        var block = _blocks.Dequeue();
-
-                        for (int i = 0; i < block.Bytes.CountOfArray; i++)
+                        if (_blocks.Count > 0)
                         {
+                            var block = _blocks.Dequeue();
+
+                            for (int i = 0; i < block.Bytes.CountOfArray; i++)
+                            {
+
                                 newSourceStream.Write(block.Bytes[i], 0, block.Bytes.CountOfByte[i]);
-                        }
-                           
+
+                            }
+
 #if DEBUG
                             Console.WriteLine($"Block id:{block.Id} decompressed {block.Count / 1024} KB");
 #endif
+                        }
                     }
 
                     CleanMemoryWaitHandler.Set();
