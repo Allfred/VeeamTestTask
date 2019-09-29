@@ -53,7 +53,7 @@ namespace GZipTest.Model
         /// Get 45% of free RAM  or if free RAM < 1 bytes then exception
         /// </summary>
         /// <returns>45% of free RAM</returns>
-        private int GetSizeFreeMemory()
+        private long GetSizeFreeMemory()
         {
             var freeRam = GetFreeRam45();
 
@@ -84,7 +84,7 @@ namespace GZipTest.Model
         ///  Get 45% of free RAM
         /// </summary>
         /// <returns>45% of free RAM</returns>
-        private static int GetFreeRam45()
+        private static long GetFreeRam45()
         {
             ulong freeRam = 0;
             foreach (var objRam in RamMonitor.Get())
@@ -93,12 +93,12 @@ namespace GZipTest.Model
             }
             freeRam = (ulong) (freeRam * 1024 * 0.45); //переводим в байты и берем 45% свободной оперативной памяти
 
-            if (freeRam > int.MaxValue)
+            if (freeRam > Int64.MaxValue)
             {
-                return int.MaxValue;
+                return Int64.MaxValue;
             }
 
-            return (int) freeRam;
+            return (long) freeRam;
         }
         /// <summary>
         /// Function of compressing
@@ -114,9 +114,10 @@ namespace GZipTest.Model
                 var id = 0;
                 _finish = false;
                 var threadW = new Thread(WritingOfBlockCompress);
-                int sizeFreeMemory = GetSizeFreeMemory();
-                var bytes = new byte[sizeFreeMemory];
-                var countReadingByte = fs.Read(bytes, 0, sizeFreeMemory);
+                long sizeFreeMemory = GetSizeFreeMemory();
+                
+                var bytes=new LargeByteArray(sizeFreeMemory);
+                long countReadingByte = ReadingStreamInByte(bytes, fs);
 
                 while (countReadingByte > 0)
                 {
@@ -129,11 +130,11 @@ namespace GZipTest.Model
                     }
 
                     if (threadW.IsAlive == false) threadW.Start();
+                    
+
                     sizeFreeMemory = GetSizeFreeMemory();
-
-
-                    bytes = new byte[sizeFreeMemory];
-                    countReadingByte = fs.Read(bytes, 0, sizeFreeMemory);
+                    bytes = new LargeByteArray(sizeFreeMemory);
+                    countReadingByte = ReadingStreamInByte(bytes, fs);
 
                 }
 
@@ -145,6 +146,21 @@ namespace GZipTest.Model
             Console.WriteLine("Сompressed successfully");
 #endif
         }
+
+        private static long ReadingStreamInByte(LargeByteArray bytes, FileStream fs)
+        {
+            long countReadingByte = 0;
+
+            for (int i = 0; i < bytes.CountOfArray; ++i)
+            {
+                int count= fs.Read(bytes[i], 0, bytes[i].Length);
+                bytes.CountOfByte[i] = count;
+                countReadingByte += count;
+            }
+
+            return countReadingByte;
+        }
+
         /// <summary>
         /// Function for compressing of blocks and writing their in file
         /// </summary>
@@ -162,7 +178,12 @@ namespace GZipTest.Model
                             while (_blocks != null && _blocks.Count > 0)
                             {
                                     var block = _blocks.Dequeue();
-                                    compressionStream.Write(block.Bytes, 0, block.Count);
+
+                                    for (int i = 0; i < block.Bytes.CountOfArray; i++)
+                                    {
+                                        compressionStream.Write(block.Bytes[i], 0, block.Bytes.CountOfByte[i]);
+                                    }
+                                    
 #if DEBUG
                                     Console.WriteLine($"Block id:{block.Id} compressed {block.Count / 1024} KB");
 #endif
@@ -189,7 +210,12 @@ namespace GZipTest.Model
                         while (_blocks != null && _blocks.Count > 0)
                         {
                             var block = _blocks.Dequeue();
-                            newSourceStream.Write(block.Bytes, 0, block.Count);
+
+                            for (int i = 0; i < block.Bytes.CountOfArray; i++)
+                            {
+                                newSourceStream.Write(block.Bytes[i], 0, block.Bytes.CountOfByte[i]);
+                            }
+                           
 #if DEBUG
                             Console.WriteLine($"Block id:{block.Id} decompressed {block.Count / 1024} KB");
 #endif
@@ -219,8 +245,9 @@ namespace GZipTest.Model
                     _finish = false;
                     var threadW = new Thread(WritingOfDecompressedBlock);
                     var sizeFreeMemory = GetSizeFreeMemory();
-                    var bytes = new byte[sizeFreeMemory];
-                    var countReadingByte = deCompressionStream.Read(bytes, 0, sizeFreeMemory);
+                    var bytes = new LargeByteArray(sizeFreeMemory);
+                    long countReadingByte = ReadingDecompressedStreamInByte(bytes, deCompressionStream);
+
                     while (countReadingByte > 0)
                     {
 #if DEBUG
@@ -233,8 +260,8 @@ namespace GZipTest.Model
 
                         if (threadW.IsAlive == false) threadW.Start();
                         sizeFreeMemory = GetSizeFreeMemory();
-                        bytes = new byte[sizeFreeMemory];
-                        countReadingByte = deCompressionStream.Read(bytes, 0, sizeFreeMemory);
+                        bytes = new LargeByteArray(sizeFreeMemory);
+                        countReadingByte = ReadingDecompressedStreamInByte(bytes, deCompressionStream);
 
                     }
 
@@ -246,6 +273,19 @@ namespace GZipTest.Model
 #if DEBUG
             Console.WriteLine("Decompressed successfully");
 #endif
+        }
+
+        private static long ReadingDecompressedStreamInByte(LargeByteArray bytes,GZipStream deCompressionStream)
+        {
+            long countReadingByte = 0;
+            for (int i = 0; i < bytes.CountOfArray; i++)
+            {
+                int count= deCompressionStream.Read(bytes[i], 0, bytes[i].Length);
+                bytes.CountOfByte[i] = count;
+                countReadingByte += count;
+            }
+
+            return countReadingByte;
         }
     }
 }

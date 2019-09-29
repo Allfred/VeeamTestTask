@@ -5,7 +5,18 @@ namespace GZipTest.Model
     public class LargeByteArray
     {
         private byte[][] _bytes;
+        /// <summary>
+        /// Get count of the subarray of big array
+        /// </summary>
         public int CountOfArray { get; }
+        /// <summary>
+        /// Set and get count of the byte of each subarray 
+        /// </summary>
+        public int[] CountOfByte { get; set; }
+        /// <summary>
+        /// Big array with long index
+        /// </summary>
+        /// <param name="count">count of the element</param>
         public LargeByteArray(long count)
         {
             CountOfArray = (int)(count / Int32.MaxValue);
@@ -17,6 +28,7 @@ namespace GZipTest.Model
             }
 
             _bytes = new byte[CountOfArray][];
+             CountOfByte=new int[CountOfArray];
 
             for (int i = 0; i < CountOfArray - 1; ++i)
             {
@@ -38,7 +50,7 @@ namespace GZipTest.Model
             get
             {
                 int firstIndex = (int)(index / Int32.MaxValue);
-                int secondIndex = (int) (index - firstIndex * Int32.MaxValue);
+                int secondIndex = (int)(index - firstIndex * Int32.MaxValue);
                 return _bytes[firstIndex][secondIndex];
             }
 
@@ -46,7 +58,20 @@ namespace GZipTest.Model
             {
                 int firstIndex = (int)(index / Int32.MaxValue);
                 int secondIndex = (int)(index - firstIndex * Int32.MaxValue);
-                _bytes[firstIndex][secondIndex]=value;
+                _bytes[firstIndex][secondIndex] = value;
+            }
+        }
+
+        public byte[] this[int index]
+        {
+            get
+            {
+                return _bytes[index];
+            }
+            set
+            {
+                _bytes[index] = value;
+
             }
         }
 

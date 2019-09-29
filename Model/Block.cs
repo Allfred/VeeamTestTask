@@ -2,7 +2,7 @@
 {
     public class Block
     {
-        public Block(int id, byte[] bytes, int count)
+        public Block(int id, LargeByteArray bytes, long count)
         {
             Id = id;
             Bytes = bytes;
@@ -10,7 +10,7 @@
         }
 
         public int Id { get; }
-        public byte[] Bytes { get; set; }
-        public int Count { get; }
+        public LargeByteArray Bytes { get; set; }
+        public long Count { get; }
     }
 }
