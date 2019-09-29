@@ -12,7 +12,7 @@ namespace GZipTest.Model
         private static readonly AutoResetEvent EndReadingWaitHandler = new AutoResetEvent(false);
         private static readonly AutoResetEvent CleanMemoryWaitHandler = new AutoResetEvent(false);
         private static readonly ManagementObjectSearcher RamMonitor = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize,FreePhysicalMemory FROM Win32_OperatingSystem");
-        private readonly Queue<Block> _blocks;
+        private  readonly Queue<Block> _blocks;
         private readonly string _sourceFile;
         private readonly string _compressedFile;
         private readonly string _deCompressedFile;
@@ -26,7 +26,7 @@ namespace GZipTest.Model
         {
             var info = GetFileInfo(sourceFile);
             _sourceFile = info.FullName; 
-            _compressedFile = _sourceFile + ".gz";
+            _compressedFile = _compressedFile = $"{_sourceFile}.gz";
             _deCompressedFile = Path.Combine(info.DirectoryName, deCompressedFile + info.Extension);
             _blocks = new Queue<Block>();
         }
@@ -41,23 +41,7 @@ namespace GZipTest.Model
             
             if (!info.Exists)
             {
-
-                var dir = new DirectoryInfo(info.DirectoryName);
-
-                foreach (var item in dir.GetFiles())
-                {
-                    var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(item.FullName);
-                    if (info.Name == fileNameWithoutExtension)
-                    {
-                        info = new FileInfo(item.FullName);
-                        break;
-                    }
-                }
-               
-                if (!info.Exists)
-                {
-                  throw new Exception($"File \"{info.FullName}\" is not exist");
-                }
+                throw new Exception($"File \"{info.FullName}\" is not exist");
             }
 
             return info;
