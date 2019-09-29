@@ -13,38 +13,41 @@ namespace GZipTest.Model
         private static readonly AutoResetEvent CleanMemoryWaitHandler = new AutoResetEvent(false);
         private static readonly ManagementObjectSearcher RamMonitor = new ManagementObjectSearcher("SELECT TotalVisibleMemorySize,FreePhysicalMemory FROM Win32_OperatingSystem");
         private  readonly Queue<Block> _blocks;
-        private readonly string _sourceFile;
-        private readonly string _compressedFile;
-        private readonly string _deCompressedFile;
+        private  string _sourceFile;
+        private  string _compressedFile;
+        private  string _deCompressedFile;
         private bool _finish;
         /// <summary>
         /// Constructor
         /// </summary>
         /// <param name="sourceFile">name of source file</param>
         /// <param name="deCompressedFile">name of deCompressed file</param>
-        public Gzip(string sourceFile,string deCompressedFile)
+        public Gzip()
         {
-            var info = GetFileInfo(sourceFile);
-            _sourceFile = info.FullName; 
-            _compressedFile = _compressedFile = $"{_sourceFile}.gz";
-            _deCompressedFile = Path.Combine(info.DirectoryName, deCompressedFile + info.Extension);
+            _sourceFile = "";
+            _compressedFile = "";
+            _deCompressedFile = "";
             _blocks = new Queue<Block>();
+
+            //var info = FileIsExist(sourceFile);
+            //_sourceFile = info.FullName; 
+            //_compressedFile = _compressedFile = $"{_sourceFile}.gz";
+            //_deCompressedFile = Path.Combine(info.DirectoryName, deCompressedFile + info.Extension);
+
         }
         /// <summary>
-        /// Get FileInfo of the file or if the file is not exist then exception
+        /// if the file is not exist return exception
         /// </summary>
         /// <param name="sourceFile">name of file</param>
         /// <returns>File info of the  file</returns>
-        private static FileInfo GetFileInfo(string sourceFile)
+        private static void FileIsExist(string sourceFile)
         {
             FileInfo info = new FileInfo(sourceFile);
             
             if (!info.Exists)
             {
-                throw new Exception($"File \"{info.FullName}\" is not exist");
+                throw new Exception($"Файл \"{info.FullName}\" не существует");
             }
-
-            return info;
         }
         /// <summary>
         /// Get 45% of free RAM  or if free RAM < 1 bytes then exception
@@ -100,8 +103,12 @@ namespace GZipTest.Model
         /// <summary>
         /// Function of compressing
         /// </summary>
-        public void Compress()
+        public void Compress(string sourceFile, string compressedFile)
         {
+            FileIsExist(sourceFile);
+            _sourceFile = sourceFile;
+            _compressedFile = $"{compressedFile}.gz";
+
             using (var fs = new FileStream(_sourceFile, FileMode.Open))
             {
                 var id = 0;
@@ -199,9 +206,11 @@ namespace GZipTest.Model
         /// <summary>
         /// Function of Decompressing 
         /// </summary>
-        public void Decompress()
+        public void Decompress(string compressedFile, string deCompressedFile)
         {
-           
+            FileIsExist(compressedFile);
+            _compressedFile = compressedFile;
+            _deCompressedFile = deCompressedFile;
             using (var compressFs = new FileStream(_compressedFile, FileMode.OpenOrCreate, FileAccess.Read))
             {
                 using (var deCompressionStream = new GZipStream(compressFs, CompressionMode.Decompress))

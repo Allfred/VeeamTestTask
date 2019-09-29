@@ -46,6 +46,7 @@
   <ItemGroup>
     <Compile Include="Model\Block.cs" />
     <Compile Include="Model\Gzip.cs" />
+    <Compile Include="Model\LargeByteArray.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

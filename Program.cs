@@ -11,23 +11,47 @@ namespace GZipTest
         {
             try
             {
-                if (args.Length < 1)
+                bool isCompress = true;
+
+                if (args.Length < 3)
+                {
+                    throw new Exception("Вы не ввели команду программы,имя исходного и результирующего файла");
+                }
+
+                if (args[0] != "compress")
+                {
+                    isCompress = false;
+                    if (args[0] != "decompress")
+                    {
+                        throw new Exception($"Команда \"{args[0]}\" не существует");
+                    }
+                }
+                
+                if (args.Length < 2)
                 {
                     throw new Exception("Вы не ввели имя исходного и результирующего файла");
                 }
 
-                if (args.Length < 2)
+                if (args.Length < 3)
                 {
                     throw new Exception("Вы не ввели имя результирующего файла");
                 }
 
-                var source = args[0];
-                var deCompressed = args[1];
-                var gzip = new Gzip(source,deCompressed);
-                gzip.Compress();
-                gzip.Decompress();
-                
-                
+                var readingFile = args[1];
+                var writingFile = args[2];
+
+                var gzip = new Gzip();
+                if (isCompress)
+                {
+                    gzip.Compress(readingFile, writingFile);
+                }
+                else
+                {
+                    gzip.Decompress(readingFile, writingFile);
+                }
+
+                Console.WriteLine("0");
+                Console.ReadKey();
             }
 
             catch (Exception e)
