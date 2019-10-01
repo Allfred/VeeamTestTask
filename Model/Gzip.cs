@@ -136,7 +136,6 @@ namespace GZipTest.Model
 
                 _finish = true;
                 EndReadingWaitHandler.WaitOne();
-                threadW.Abort();
             }
 #if DEBUG
             Console.WriteLine("Сompressed successfully");
@@ -280,7 +279,6 @@ namespace GZipTest.Model
 
                     _finish = true;
                     EndReadingWaitHandler.WaitOne();
-                    _threadWDec.Abort();
                 }
             }
 #if DEBUG
